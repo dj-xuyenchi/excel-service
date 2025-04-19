@@ -2,6 +2,9 @@ import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 
+import java.sql.Types;
+import java.util.Date;
+
 public class Main {
     private static void method(int start, int end, Sheet sheet, Sheet sheet2) {
         for (int i = start; i <= end; i++) {
@@ -20,9 +23,10 @@ public class Main {
     public static void main(String[] args) throws Exception {
         String filePath = "data.xlsx"; // Đường dẫn đến file Excel
         String filePath2 = "output.xlsx";
-
+        ExcelService e1 = new ExcelService(filePath2);
+        boolean ss = e1.deleteFile();
         ExcelService e = new ExcelService(filePath);
-        e.readExcel(1, 3, 1, 222, (x, s, sheet) -> {
+        e.readExcel("Sheet1", 3, 1, 222, (x, s, sheet) -> {
             for (int i = x; i <= s; i++) {
 
                 try {
@@ -32,6 +36,12 @@ public class Main {
                 } catch (Exception es) {
                     System.out.println(es.getMessage());
                 }
+            }
+        });
+
+        e.writeExcel("gg3g", (d) -> {
+            for (int i = 1; i < 10; i++) {
+                ExcelService.setCellValue(d, i, 1, new Date(), "yyyy-MM-dd HH:mm:ss");
             }
         });
         System.out.println("Ket thuc");

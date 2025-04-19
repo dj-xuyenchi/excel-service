@@ -1,30 +1,50 @@
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-import java.io.File;
-import java.io.FileInputStream;
+import java.io.*;
+import java.math.BigDecimal;
+import java.sql.Types;
+import java.util.Date;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class ExcelService {
     /**
-     * ApplyMethod
+     * ApplyReadMethod
      *
      * @description Định nghĩa lambda function theo function interface
      */
-    public interface ApplyMethod {
+    public interface ApplyReadMethod {
         void apply(int startRow, int endRow, Sheet sheet);
+
     }
 
+    /**
+     * ApplyWriteMethod
+     *
+     * @description Định nghĩa lambda function theo function interface
+     */
+    public interface ApplyWriteMethod {
+        void apply(Sheet sheet);
+
+    }
+
+    private File file;
     private Workbook _workbook;
     private int _sheetCount;
-    private int[] _sheetRowCount;
     private boolean isFileValid;
 
     public static ExcelService createExcelFile(String fileName) {
         return new ExcelService("");
+    }
+
+    public File getFile() {
+        return file;
+    }
+
+    public boolean deleteFile() {
+        return file.delete();
     }
 
     /**
@@ -35,15 +55,11 @@ public class ExcelService {
      */
     public ExcelService(String filePath) {
         try {
-            FileInputStream fis = new FileInputStream(new File(filePath));
+            file = new File(filePath);
+            FileInputStream fis = new FileInputStream(file);
             Workbook workbook = new XSSFWorkbook(fis);
             // Lấy số lượng sheet của file
             _sheetCount = workbook.getNumberOfSheets();
-            // Lấy dòng cuối cùng có dữ liệu của từng sheet
-            _sheetRowCount = new int[_sheetCount];
-            for (int i = 0; i < _sheetCount; i++) {
-                _sheetRowCount[i] = workbook.getSheetAt(i).getLastRowNum();
-            }
             _workbook = workbook;
             isFileValid = true;
         } catch (Exception e) {
@@ -55,20 +71,20 @@ public class ExcelService {
     /**
      * readExcel
      *
-     * @param sheetTab    sheet muốn đọc
+     * @param sheetName   sheet muốn đọc
      * @param numOfThread số lượng thread muốn sử dụng
      * @param startRow    hàng bắt đâu đọc
      * @param endRow      hàng kết thúc
      * @param applyMethod lambda sẽ chạy
      * @description Hàm này đọc dữ liệu từ sheet theo thứ tự từ startRow đến endRow và chia vào thread để tối ưu hiệu năng đọc
      */
-    public void readExcel(int sheetTab, int numOfThread, int startRow, int endRow, ApplyMethod applyMethod) throws InterruptedException {
+    public void readExcel(String sheetName, int numOfThread, int startRow, int endRow, ApplyReadMethod applyMethod) throws InterruptedException {
         long startTime = System.nanoTime();
-        if (sheetTab > _sheetCount || sheetTab < 0) {
-            throw new IllegalArgumentException("File excel khong co sheet " + sheetTab);
+        Sheet sheet = _workbook.getSheet(sheetName);
+        if (sheet == null) {
+            throw new RuntimeException("Sheet not found: " + sheetName);
         }
-        Sheet sheet = _workbook.getSheetAt(sheetTab - 1);
-        int sheetRowCount = _sheetRowCount[sheetTab - 1];
+        int sheetRowCount = sheet.getLastRowNum();
 
         if (endRow < startRow) {
             throw new IllegalArgumentException("Dong cuoi phai lon hon dong dau");
@@ -79,8 +95,6 @@ public class ExcelService {
             sheetRowCount = endRow;
         }
 
-
-        ExecutorService executorService = Executors.newFixedThreadPool(numOfThread);
         startRow--;
         startRow = Math.max(startRow, 0);
         numOfThread = Math.max(numOfThread, 1);
@@ -90,6 +104,8 @@ public class ExcelService {
         int redundantRows = actualRowCount % numOfThread;
         redundantRows = rowPerThread == 1 ? 0 : redundantRows;
         int nextStartRow = 0;
+
+        ExecutorService executorService = Executors.newFixedThreadPool(numOfThread);
 
         while (numOfThread > 0) {
             int start = startRow + nextStartRow;
@@ -119,8 +135,69 @@ public class ExcelService {
         executorService.awaitTermination(1, TimeUnit.HOURS);
         long endTime = System.nanoTime();
         long duration = endTime - startTime;
+
         System.out.println("Thời gian chạy: " + (duration / 1_000_000) + " milli giây");
     }
+
+    public void writeExcel(String sheetName, ApplyWriteMethod applyMethod) throws Exception {
+        long startTime = System.nanoTime();
+        Sheet sheet = _workbook.getSheet(sheetName);
+        if (sheet == null) {
+            sheet = _workbook.createSheet(sheetName);
+        }
+        applyMethod.apply(sheet);
+
+        FileOutputStream outputStream = new FileOutputStream(file.getAbsolutePath());
+        _workbook.write(outputStream);
+
+        long endTime = System.nanoTime();
+        long duration = endTime - startTime;
+
+        System.out.println("Thời gian chạy: " + (duration / 1_000_000) + " milli giây");
+    }
+
+
+    public static void setCellValue(Sheet sheet, int row, int cell, Object value, int type) {
+        Row r = sheet.getRow(row);
+        if (r == null) {
+            r = sheet.createRow(row);
+        }
+        Cell c = r.getCell(cell);
+        if (c == null) {
+            c = r.createCell(cell);
+        }
+        switch (type) {
+            case Types.INTEGER -> {
+                c.setCellValue(Integer.parseInt(value.toString()));
+            }
+            case Types.DECIMAL -> {
+                c.setCellValue(Double.parseDouble(value.toString()));
+            }
+            case Types.NVARCHAR -> {
+                c.setCellValue((String) value);
+            }
+            default -> {
+                c.setCellValue((String) value);
+            }
+        }
+    }
+
+    public static void setCellValue(Sheet sheet, int row, int cell, Date value, String format) {
+        Row r = sheet.getRow(row);
+        if (r == null) {
+            r = sheet.createRow(row);
+        }
+        Cell c = r.getCell(cell);
+        if (c == null) {
+            c = r.createCell(cell);
+        }
+        c.setCellValue((Date) value);
+        CellStyle cellStyle = sheet.getWorkbook().createCellStyle();
+        CreationHelper createHelper = sheet.getWorkbook().getCreationHelper();
+        cellStyle.setDataFormat(createHelper.createDataFormat().getFormat(format));
+        c.setCellStyle(cellStyle);
+    }
+
 
     public boolean isFileValid() {
         return isFileValid;
@@ -138,11 +215,5 @@ public class ExcelService {
         this._workbook = _workbook;
     }
 
-    public int get_sheetCount() {
-        return _sheetCount;
-    }
 
-    public void set_sheetCount(int _sheetCount) {
-        this._sheetCount = _sheetCount;
-    }
 }
