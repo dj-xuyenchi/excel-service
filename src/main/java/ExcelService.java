@@ -1,3 +1,6 @@
+import lombok.Builder;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
@@ -9,6 +12,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+@Getter
+@Setter
 public class ExcelService {
     /**
      * ApplyReadMethod
@@ -28,6 +33,39 @@ public class ExcelService {
     public interface ApplyWriteMethod {
         void apply(Sheet sheet);
 
+    }
+
+    @Setter
+    @Getter
+    @Builder
+    public static class BuildStyle {
+        private String fontName;
+        private int fontSize;
+        private int fontColor;
+        private boolean fontBold;
+        private boolean fontItalic;
+        private boolean fontUnderline;
+        private Workbook _workbook;
+
+
+        public CellStyle getStyle() {
+            CellStyle style = _workbook.createCellStyle();
+            Font font = _workbook.createFont();
+
+            // Định dạng Font
+            font.setFontName(fontName);         // Đặt font chữ
+            font.setFontHeightInPoints((short) fontSize); // Kích thước font
+            font.setBold(fontBold);               // In đậm
+            font.setItalic(fontItalic);             // In nghiêng
+            if (fontUnderline) {
+                font.setUnderline(Font.U_SINGLE); // Gạch dưới
+            }
+            font.setColor((short) fontColor); // Đặt màu đỏ
+
+            // Gắn Font vào Style
+            style.setFont(font);
+            return style;
+        }
     }
 
     private File file;
@@ -157,7 +195,7 @@ public class ExcelService {
     }
 
 
-    public static void setCellValue(Sheet sheet, int row, int cell, Object value, int type) {
+    public static void setCellValue(Sheet sheet, int row, int cell, Object value, int type, BuildStyle buildStyle) {
         Row r = sheet.getRow(row);
         if (r == null) {
             r = sheet.createRow(row);
@@ -180,9 +218,14 @@ public class ExcelService {
                 c.setCellValue((String) value);
             }
         }
+        if(buildStyle != null) {
+            c.setCellStyle(buildStyle.getStyle());
+        }else{
+            c.setCellStyle(null);
+        }
     }
 
-    public static void setCellValue(Sheet sheet, int row, int cell, Date value, String format) {
+    public static void setCellValue(Sheet sheet, int row, int cell, Date value, String format, BuildStyle buildStyle) {
         Row r = sheet.getRow(row);
         if (r == null) {
             r = sheet.createRow(row);
@@ -191,29 +234,18 @@ public class ExcelService {
         if (c == null) {
             c = r.createCell(cell);
         }
-        c.setCellValue((Date) value);
-        CellStyle cellStyle = sheet.getWorkbook().createCellStyle();
-        CreationHelper createHelper = sheet.getWorkbook().getCreationHelper();
-        cellStyle.setDataFormat(createHelper.createDataFormat().getFormat(format));
-        c.setCellStyle(cellStyle);
+        c.setCellValue( value);
+        if(buildStyle != null) {
+            CellStyle cellStyle = buildStyle.getStyle();
+            CreationHelper createHelper = sheet.getWorkbook().getCreationHelper();
+            cellStyle.setDataFormat(createHelper.createDataFormat().getFormat(format));
+            c.setCellStyle(cellStyle);
+        }else{
+            CellStyle cellStyle = sheet.getWorkbook().createCellStyle();
+            CreationHelper createHelper = sheet.getWorkbook().getCreationHelper();
+            cellStyle.setDataFormat(createHelper.createDataFormat().getFormat(format));
+            c.setCellStyle(buildStyle.getStyle());
+        }
     }
-
-
-    public boolean isFileValid() {
-        return isFileValid;
-    }
-
-    public void setFileValid(boolean fileValid) {
-        isFileValid = fileValid;
-    }
-
-    public Workbook get_workbook() {
-        return _workbook;
-    }
-
-    public void set_workbook(Workbook _workbook) {
-        this._workbook = _workbook;
-    }
-
 
 }

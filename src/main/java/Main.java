@@ -1,4 +1,5 @@
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 
@@ -40,8 +41,16 @@ public class Main {
         });
 
         e.writeExcel("gg3g", (d) -> {
+            ExcelService.BuildStyle b = new ExcelService.BuildStyle.BuildStyleBuilder()._workbook(d.getWorkbook())
+                    .fontSize(26)
+                    .fontColor(IndexedColors.BLUE.getIndex())
+                    .fontBold(true)
+                    .fontItalic(true)
+                    .fontUnderline(true)
+                    .build()
+                    ;
             for (int i = 1; i < 10; i++) {
-                ExcelService.setCellValue(d, i, 1, new Date(), "yyyy-MM-dd HH:mm:ss");
+                ExcelService.setCellValue(d, i, 1, "sdfsdfsd2f", Types.NVARCHAR,null);
             }
         });
         System.out.println("Ket thuc");
