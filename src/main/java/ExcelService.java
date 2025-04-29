@@ -5,9 +5,11 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.*;
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.sql.Types;
-import java.util.Date;
+import java.text.Format;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -15,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 @Getter
 @Setter
 public class ExcelService {
+
     /**
      * ApplyReadMethod
      *
@@ -31,7 +34,7 @@ public class ExcelService {
      * @description Định nghĩa lambda function theo function interface
      */
     public interface ApplyWriteMethod {
-        void apply(Sheet sheet);
+        void apply(int startRow, int endRow, Sheet sheet);
 
     }
 
@@ -116,13 +119,37 @@ public class ExcelService {
      * @param applyMethod lambda sẽ chạy
      * @description Hàm này đọc dữ liệu từ sheet theo thứ tự từ startRow đến endRow và chia vào thread để tối ưu hiệu năng đọc
      */
-    public void readExcel(String sheetName, int numOfThread, int startRow, int endRow, ApplyReadMethod applyMethod) throws InterruptedException {
-        long startTime = System.nanoTime();
+    public void read(String sheetName, int numOfThread, int startRow, int endRow, ApplyReadMethod applyMethod) throws Exception {
         Sheet sheet = _workbook.getSheet(sheetName);
+        readExcel(sheet, numOfThread, startRow, endRow, applyMethod);
+    }
+
+    /**
+     * readExcel
+     *
+     * @param sheetTab    sheet muốn đọc index
+     * @param numOfThread số lượng thread muốn sử dụng
+     * @param startRow    hàng bắt đâu đọc
+     * @param endRow      hàng kết thúc
+     * @param applyMethod lambda sẽ chạy
+     * @description Hàm này đọc dữ liệu từ sheet theo thứ tự từ startRow đến endRow và chia vào thread để tối ưu hiệu năng đọc
+     */
+    public void read(int sheetTab, int numOfThread, int startRow, int endRow, ApplyReadMethod applyMethod) throws Exception {
+        sheetTab--;
+        Sheet sheet = _workbook.getSheetAt(sheetTab);
+        readExcel(sheet, numOfThread, startRow, endRow, applyMethod);
+    }
+
+    private void readExcel(Sheet sheet, int numOfThread, int startRow, int endRow, ApplyReadMethod applyMethod) throws InterruptedException {
+        long startTime = System.nanoTime();
         if (sheet == null) {
-            throw new RuntimeException("Sheet not found: " + sheetName);
+            throw new RuntimeException("Sheet not found: ");
         }
         int sheetRowCount = sheet.getLastRowNum();
+
+        if (endRow < 0) {
+            endRow = sheetRowCount;
+        }
 
         if (endRow < startRow) {
             throw new IllegalArgumentException("Dong cuoi phai lon hon dong dau");
@@ -177,25 +204,91 @@ public class ExcelService {
         System.out.println("Thời gian chạy: " + (duration / 1_000_000) + " milli giây");
     }
 
-    public void writeExcel(String sheetName, ApplyWriteMethod applyMethod) throws Exception {
-        long startTime = System.nanoTime();
+    public <T> File writeExcel(String sheetName, int startRow, int startCol, List<T> data, String[] colVariable, String exportName) throws Exception {
         Sheet sheet = _workbook.getSheet(sheetName);
         if (sheet == null) {
             sheet = _workbook.createSheet(sheetName);
         }
-        applyMethod.apply(sheet);
-
-        FileOutputStream outputStream = new FileOutputStream(file.getAbsolutePath());
-        _workbook.write(outputStream);
-
-        long endTime = System.nanoTime();
-        long duration = endTime - startTime;
-
-        System.out.println("Thời gian chạy: " + (duration / 1_000_000) + " milli giây");
+        return write(sheet, startRow, startCol, data, colVariable, exportName);
     }
 
+    private <T> File write(Sheet sheet, int startRow, int startCol, List<T> data, String[] colVariable, String exportName) throws Exception {
+        long startTime = System.nanoTime();
+        if (data == null || data.isEmpty()) {
+            System.out.println("Không có data");
+            return null;
+        }
+        T template = data.get(0);
+        Class<T> classTemplate = (Class<T>) template.getClass();
+        Map<String, Field> fieldMap = new HashMap<>();
+        for (String var : colVariable) {
+            Field field = classTemplate.getDeclaredField(var);
+            field.setAccessible(true);
+            fieldMap.put(var, field);
+        }
 
-    public static void setCellValue(Sheet sheet, int row, int cell, Object value, int type, BuildStyle buildStyle) {
+        for (int i = 0; i < data.size(); i++) {
+            T dataItem = data.get(i);
+            for (int j = 0; j < colVariable.length; j++) {
+                Field field = fieldMap.get(colVariable[j]);
+                setCellValue(sheet, startRow + i, startCol + j, field.get(dataItem).toString(), null);
+            }
+        }
+        String fileNewName = exportName.endsWith(".xlsx") ? exportName : exportName + ".xlsx";
+
+        FileOutputStream outputStream = new FileOutputStream(fileNewName);
+        _workbook.write(outputStream);
+        long endTime = System.nanoTime();
+        long duration = endTime - startTime;
+        outputStream.close();
+        System.out.println("Thời gian chạy: " + (duration / 1_000_000) + " milli giây");
+        return new File(fileNewName);
+    }
+
+    public static String getCellValue(Sheet sheet, int row, int col) {
+        Row rowData = sheet.getRow(row);
+        if (rowData == null) {
+            return null;
+        }
+        Cell cell = rowData.getCell(col);
+        if (cell == null) {
+            return null;
+        }
+        switch (cell.getCellType()) {
+            case NUMERIC -> {
+                return String.valueOf(cell.getNumericCellValue());
+            }
+            case BOOLEAN -> {
+                return String.valueOf(cell.getBooleanCellValue());
+            }
+            case BLANK -> {
+                return null;
+            }
+            default -> {
+                return cell.getStringCellValue();
+            }
+        }
+    }
+
+    public static void setCellValue(Sheet sheet, int row, int cell, String value, BuildStyle buildStyle) {
+        Cell c = getCell(sheet, row, cell);
+        c.setCellValue(value);
+        setStyle(c, buildStyle);
+    }
+
+    public static void setCellValue(Sheet sheet, int row, int cell, double value, BuildStyle buildStyle) {
+        Cell c = getCell(sheet, row, cell);
+        c.setCellValue(value);
+        setStyle(c, buildStyle);
+    }
+
+    public static void setCellValue(Sheet sheet, int row, int cell, int value, BuildStyle buildStyle) {
+        Cell c = getCell(sheet, row, cell);
+        c.setCellValue(value);
+        setStyle(c, buildStyle);
+    }
+
+    private static Cell getCell(Sheet sheet, int row, int cell) {
         Row r = sheet.getRow(row);
         if (r == null) {
             r = sheet.createRow(row);
@@ -204,43 +297,26 @@ public class ExcelService {
         if (c == null) {
             c = r.createCell(cell);
         }
-        switch (type) {
-            case Types.INTEGER -> {
-                c.setCellValue(Integer.parseInt(value.toString()));
-            }
-            case Types.DECIMAL -> {
-                c.setCellValue(Double.parseDouble(value.toString()));
-            }
-            case Types.NVARCHAR -> {
-                c.setCellValue((String) value);
-            }
-            default -> {
-                c.setCellValue((String) value);
-            }
-        }
-        if(buildStyle != null) {
+        return c;
+    }
+
+    private static void setStyle(Cell c, BuildStyle buildStyle) {
+        if (buildStyle != null) {
             c.setCellStyle(buildStyle.getStyle());
-        }else{
+        } else {
             c.setCellStyle(null);
         }
     }
 
     public static void setCellValue(Sheet sheet, int row, int cell, Date value, String format, BuildStyle buildStyle) {
-        Row r = sheet.getRow(row);
-        if (r == null) {
-            r = sheet.createRow(row);
-        }
-        Cell c = r.getCell(cell);
-        if (c == null) {
-            c = r.createCell(cell);
-        }
-        c.setCellValue( value);
-        if(buildStyle != null) {
+        Cell c = getCell(sheet, row, cell);
+        c.setCellValue(value);
+        if (buildStyle != null) {
             CellStyle cellStyle = buildStyle.getStyle();
             CreationHelper createHelper = sheet.getWorkbook().getCreationHelper();
             cellStyle.setDataFormat(createHelper.createDataFormat().getFormat(format));
             c.setCellStyle(cellStyle);
-        }else{
+        } else {
             CellStyle cellStyle = sheet.getWorkbook().createCellStyle();
             CreationHelper createHelper = sheet.getWorkbook().getCreationHelper();
             cellStyle.setDataFormat(createHelper.createDataFormat().getFormat(format));

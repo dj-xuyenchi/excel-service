@@ -3,8 +3,10 @@ import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 
+import java.io.File;
+import java.math.BigDecimal;
 import java.sql.Types;
-import java.util.Date;
+import java.util.*;
 
 public class Main {
     private static void method(int start, int end, Sheet sheet, Sheet sheet2) {
@@ -23,38 +25,37 @@ public class Main {
 
     public static void main(String[] args) throws Exception {
         String filePath = "data.xlsx"; // Đường dẫn đến file Excel
-        String filePath2 = "output.xlsx";
+        String filePath2 = "Book1.xlsx";
         ExcelService e1 = new ExcelService(filePath2);
-        boolean ss = e1.deleteFile();
+//        boolean ss = e1.deleteFile();
         ExcelService e = new ExcelService(filePath);
-        e.readExcel("Sheet1", 3, 1, 222, (x, s, sheet) -> {
-            for (int i = x; i <= s; i++) {
+        //  List<String> res = Collections.synchronizedList(new ArrayList<>());
+//        e.read(1, 3, 1, -1, (x, s, sheet) -> {
+//            for (int i = x; i <= s; i++) {
+//                try {
+//                    res.add(ExcelService.getCellValue(sheet,i,0));
+//                    //   System.out.println(ExcelService.getCellValue(sheet,i,0));
+//                    // Thread.sleep(10);
+//                } catch (Exception es) {
+//                    System.out.println(es.getMessage());
+//                }
+//            }
+//        });
+        System.out.println();
+        List<TestClass> data = new ArrayList<>();
 
-                try {
-                    Double d = sheet.getRow(i).getCell(0).getNumericCellValue();
-                    System.out.println(d );
-                    Thread.sleep(10);
-                } catch (Exception es) {
-                    System.out.println(es.getMessage());
-                }
-            }
-        });
-
-        e.writeExcel("gg3g", (d) -> {
-            ExcelService.BuildStyle b = new ExcelService.BuildStyle.BuildStyleBuilder()._workbook(d.getWorkbook())
-                    .fontSize(26)
-                    .fontColor(IndexedColors.BLUE.getIndex())
-                    .fontBold(true)
-                    .fontItalic(true)
-                    .fontUnderline(true)
-                    .build()
-                    ;
-            for (int i = 1; i < 10; i++) {
-                ExcelService.setCellValue(d, i, 1, "sdfsdfsd2f", Types.NVARCHAR,null);
-            }
-        });
+        for (int i = 0; i < 10; i++) {
+            TestClass a = new TestClass();
+            a.setName("hihi" + i);
+            a.setPrice(new BigDecimal(3433));
+            a.setCreatedAt(new Date());
+            data.add(a);
+        }
+        String[] col = new String[3];
+        col[0] = "name";
+        col[1] = "price";
+        col[2] = "createdAt";
+        File r = e1.writeExcel("data2", 2, 2, data, col, UUID.randomUUID().toString());
         System.out.println("Ket thuc");
-
-
     }
 }
